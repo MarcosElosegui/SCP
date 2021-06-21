@@ -5,27 +5,32 @@
 #include "persona.h"
 #include "struct.h"
 #include "parametros.h"
+#include "poblacion.h"
 
-void iniciarPoblacion(struct poblacion *pb){
-    int i, edadmedia,ritmo, personas_a_vacunar;
+void iniciarPoblacion(struct poblacion *pb, int reparto, int world_rank, int world_size){
+    int i, edadmedia,ritmo, personas_a_vacunar,first, id;
     struct persona *p;
     struct nodo *act;
     struct nodo *aux;
-    pb->tamano = NUM_PERSONAS;
+    pb->tamano = reparto;
     pb->radio = RAD;
     edadmedia = 0;
-    pb->sanos = NUM_PERSONAS;
+    pb->sanos = pb->tamano;
     pb->paciente_cero = rand() % NUM_PERSONAS;
 
-    for(i=0; i<NUM_PERSONAS; i++){
+    id = world_rank*reparto;
+
+    for(i=0; i<reparto; i++){
         act = (struct nodo*) malloc(sizeof(struct nodo));
-        p = crearPersona(i);
-        edadmedia = edadmedia + p->edad;
+        p = crearPersona(id);
+        edadmedia += p->edad;
         if(i==pb->paciente_cero) p->estado = 1;
+        if(p->id==10) p->estado = 1;
+        if(p->id==30) p->estado = 1;
         printf("ID: %d, EDAD: %d, ESTADO: %d, MORTALIDAD: %.3f, POSICION: [%d, %d], VELOCIDAD[%d, %d]\n", p->id, p->edad, p->estado, p->mortalidad, p->posicion[0], p->posicion[1], p->velocidad[0], p->velocidad[1]);
         act->data = p;
         if(act->data->estado == 1 || act->data->estado == 2) pb->sanos--;
-        if(p->id==0){
+        if(i==0){
             pb->primero = act;
             pb->ultimo = act;
         } else {
@@ -33,6 +38,7 @@ void iniciarPoblacion(struct poblacion *pb){
             pb->ultimo = act;
         }
         aux = act;
+        id++;
     }
     personas_a_vacunar = (INMUNIZACION*NUM_PERSONAS)/100;
     if((MAX_TIEMPO/personas_a_vacunar)==0){
@@ -41,7 +47,7 @@ void iniciarPoblacion(struct poblacion *pb){
         ritmo = MAX_TIEMPO/personas_a_vacunar;
     }
     pb->contagiados = 1;
-    pb->a_vacunar = personas_a_vacunar;
+    pb->a_vacunar = personas_a_vacunar/world_size;
     pb->vacunados = 0;
     pb->recuperados = 0;
     pb->muertos = 0;
@@ -49,41 +55,52 @@ void iniciarPoblacion(struct poblacion *pb){
     pb->ritmo_vacunacion = ritmo;
     pb->eje_x = (int) sqrt(NUM_PERSONAS)+1;
     pb->eje_y = pb->eje_x;
-    pb->mediaEdad = edadmedia/NUM_PERSONAS;
+    pb->mediaEdad = edadmedia/pb->tamano;
     pb->probContagio = CONTAGIO;
     pb->periodoIncubacion = INCUBACION;
     pb->periodoRecuperacion = RECUPERACION;
     pb->probCambioVec = CAMBIO_VEC;
 }
 
-void contagio(struct poblacion *pb){
+
+void contagio(struct poblacion *pb, int *contagiados, int size){
     int i,j,infectado;
-    struct nodo *act;
-    act = pb->primero;
-    struct nodo *aux = act->sig;
-    for(i=0; i<pb->tamano-1; i++){
-        if(act->data->estado == 1 || act->data->estado == 2){ //Persona que va a infectar
-            for(j=i; j<pb->tamano-1; j++){ //Comparamos persona que puede infectar con las demas de la lista
-                //printf("%d\t", act->data->id);
-                //printf("%d\n", aux->data->id);
-                if(aux->data->estado == 0 && act->data->contagiado != R0){ //Solo se podran contagiar los individuos con estado 0.
-                    if(((aux->data->posicion[0] - act->data->posicion[0])<=RAD) || ((aux->data->posicion[1] - act->data->posicion[1])<=RAD)){ //Comprobamos que la persona este en rango de infeccion.
+    struct nodo * aux;
+    for(i=0; i<(size/2);i++){
+            aux = pb->primero;
+            for(j=0; j<pb->tamano; j++){ //Comparamos persona que puede infectar con las demas de la lista
+                if(aux->data->estado == 0){ //Solo se podran contagiar los individuos con estado 0.  && act->data->contagiado != R0
+                    if(((aux->data->posicion[i] - contagiados[i])<=RAD) || ((aux->data->posicion[1] - contagiados[i+1])<=RAD)){ //Comprobamos que la persona este en rango de infeccion.
                         infectado = rand() % 100; //Sacamos un numero aleatorio, el cual indicara si el individuo dentro del rango se infecta.
                         if(infectado <= CONTAGIO){
-                            //act->data->contagiado++;
                             aux->data->estado = 6; //Cambiamos estado a un estado que nos indica que esta infectado, pero en periodo de incubación.
                             pb->sanos--;
                             pb->contagiados++;
                             printf("¡LA PERSONA %d HA SIDO INFECTADA!\nEDAD: %d, ESTADO: %d, MORTALIDAD: %.3f, POSICION: [%d, %d], VELOCIDAD[%d, %d]\n", aux->data->id, aux->data->edad, aux->data->estado, aux->data->mortalidad, aux->data->posicion[0], aux->data->posicion[1], aux->data->velocidad[0], aux->data->velocidad[1]);
-                        }                      
+                        }            
                     }
                 }
                 aux = aux->sig;
             }
+            i++;
+    }
+}
+
+int contagiados(struct poblacion *pb, int world_rank, int  size, int * contagio){
+    int i;
+    int indice = 0;
+    struct nodo *act;
+    act = pb->primero;  
+    for(i=0; i<pb->tamano; i++){
+        if(act->data->estado == 1 || act->data->estado == 2){
+            contagio[indice] = act->data->posicion[0];
+            contagio[indice+1] = act->data->posicion[1];
+            indice = indice+2;
         }
         act = act->sig;
-        aux = pb->primero;
     }
+    size=indice;
+    return size;
 }
 
 void mortalidad(struct poblacion *pb){
@@ -95,13 +112,11 @@ void mortalidad(struct poblacion *pb){
     for(i=0; i<pb->tamano; i++){
         if((act->data->estado == 1) || (act->data->estado == 2)){
             mort = ((float) rand() / (float) (RAND_MAX)) * 1.0;
-            //printf("%f\t", muerto);
-            //printf("%f\n", mort);
             if(mort<=act->data->mortalidad){
                 act->data->estado = 5;
                 pb->muertos++;
                 pb->contagiados--;
-                printf("¡LA PERSONA %d HA ESTIRADO LA PATA!\n", act->data->id);
+                printf("¡LA PERSONA %d HA MUERTO!\n", act->data->id);
             }
         }
         act = act->sig;
@@ -194,21 +209,28 @@ void vacunarPoblacion(struct poblacion *pb){
     }
 }
 
-void metricas(struct poblacion *pb, const char * restrict modo){
-    int i;
+void metricas(struct poblacion *pb, const char * modo, int world_size, int world_rank){
+    int i, j;
     struct nodo *act;
     act = pb->primero;
     FILE *pos;
     FILE *metric;
 
-    pos = fopen("simulacion.pos", modo);
-    metric = fopen("simulacion.metricas", modo);
+    for(j=0; j<world_size; j++){
+        if(world_rank==j){
+            pos = fopen("simulacion.pos", modo);
 
-    for(i=0; i<pb->tamano; i++){
-        fprintf(pos, "ID: %d, ESTADO: %d, POSICION: [%d, %d]\n", act->data->id, act->data->estado, act->data->posicion[0], act->data->posicion[1]);
-        act = act->sig;
+            for(i=0; i<pb->tamano; i++){
+                fprintf(pos, "ID: %d, ESTADO: %d, POSICION: [%d, %d]\n", act->data->id, act->data->estado, act->data->posicion[0], act->data->posicion[1]);
+                act = act->sig;
+            }
+
+            fclose(pos);
+        }
     }
-    fclose(pos);
-    fprintf(metric, "SANOS: %d \nCONTAGIADOS: %d \nRECUPERADOS: %d \nFALLECIDOS: %d \nR0: %d\n\n", pb->sanos, pb->contagiados, pb->recuperados, pb->muertos, pb->r0);
-    fclose(metric);
+    if(world_rank==0){
+        metric = fopen("simulacion.metricas", "w");
+        fprintf(metric, "SANOS: %d \nCONTAGIADOS: %d \nRECUPERADOS: %d \nFALLECIDOS: %d \n\n\n", sanos, contagiaos, recuperados, fallecidos);
+        fclose(metric);
+    }
 }

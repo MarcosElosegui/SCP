@@ -36,7 +36,6 @@ int main(int argc, char *argv[]){
     t = clock() - t;
     double tiempo = ((double)t)/CLOCKS_PER_SEC;
     
-    printf("TIEMPO FINAL: %d lo que sea\n", tiempo);
     printf("TIEMPO FINAL: %f segundos\n", tiempo);
     return 0;
 }
